@@ -1,0 +1,347 @@
+---
+title: "depotAllocation"
+author: "Doug Laney"
+date: "4/12/2020"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Depot Allocation Prediction 
+
+```{r}
+library(tidyverse)
+```
+## Machine Learning
+
+### Decision Tree
+
+```{r}
+
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(caret)
+
+#loading the data
+data2k18 <- read.csv("dataset18.csv")
+data2k19 <- read.csv("dataset19.csv")
+buyer <- rbind(data2k18,data2k19 )
+head(buyer)
+summary(buyer)
+
+buyer$DEPOT_NUM <- as.factor(buyer$DEPOT_NUM)
+
+#dataset splitting
+train.index <- sample(c(1:dim(buyer)), dim(buyer)[1] * 0.6)
+train <- buyer[train.index, ]
+valid <- buyer[-train.index, ]
+
+
+#applying the classification tree algorithm
+class_tree <- rpart(DEPOT_NUM ~ SHIP_TO_ZIP , data=train, method="class", 
+                         control=rpart.control(minbucket=50, maxdepth=7))
+
+#looking at the classification 
+printcp(class_tree)
+
+#looking at the tree
+#png("test.png",width=3.25,height=3.25,units="in",res=1200)
+tree <- prp(class_tree, type=1, extra=1, under=TRUE, split.font=2, varlen=-12, box.col="orange")
+#fancyRpartPlot(class_tree)
+#dev.off()
+
+# Confusion matrix with accuracy of model
+
+class.treepred <- predict(class_tree, valid, type = 'class')
+class.treepred1 <- predict(class_tree, valid, type = 'prob')
+table(class.treepred, valid$DEPOT_NUM)
+confusionMatrix(class.treepred, as.factor(valid$DEPOT_NUM))
+
+```
+
+
+### naive bayes
+
+
+```{r}
+
+library(tidyverse)
+library(caret)
+library(caret)
+library(FNN)
+library(e1071)
+
+## Loading Data
+data19 <- read_csv("C:/Users/amals/Desktop/dataset19.csv")
+data18 <- read_csv("C:/Users/amals/Desktop/dataset18.csv")
+data <- rbind(data18, data19)
+
+
+## Converting Data into factor
+#data$SHIP_TO_ZIP_x <- names("SHIP_TO_ZIP")
+data$DEPOT_NUM <- as.factor(data$DEPOT_NUM)
+data$SHIP_TO_ZIP <- as.factor(data$SHIP_TO_ZIP)
+data$SHIP_TO_STATE <- as.factor(data$SHIP_TO_STATE)
+data$ITEM_CATEGORY <- as.factor(data$ITEM_CATEGORY)
+
+## Converting date into YYYY-MM-DD format
+#sapply(data, class)
+data$ORDER_DATE <- as.Date(data$ORDER_DATE, "%m/%d/%y")
+
+
+sapply(data, class)
+
+## Splitting Data into training & Validation
+set.seed(111)
+train.index <- sample(row.names(data), 0.6*dim(data)[1])   
+valid.index <- setdiff(row.names(data), train.index)   
+train.df <- data[train.index, ]
+valid.df <- data[valid.index, ]
+
+## Creating new Data frame for checking Correlated predictors
+#names(data)
+dataF <- data.frame(data$ITEM_NUM, data$ORDER_QTY, data$SELL_PRICE, data$COUPON_REDEEMED_AMT, data$SHIP_TO_STATE, data$SHIP_TO_ZIP, data$DEPT_NUM, data$ITEM_COST, data$DEPOT_NUM, data$SHIP_FROM_ZIP)
+
+dataF$data.SHIP_TO_STATE <- as.numeric(dataF$data.SHIP_TO_STATE)
+dataF$data.SHIP_TO_ZIP <- as.numeric(dataF$data.SHIP_TO_ZIP)
+dataF$data.DEPOT_NUM <- as.numeric(dataF$data.DEPOT_NUM)
+
+## Finding Correlation
+cor(dataF)
+
+## Naive bayes
+depot_train <- naiveBayes(DEPOT_NUM ~ SHIP_TO_STATE+SHIP_TO_ZIP+ITEM_NUM ,data =train.df)
+
+## Confusion Matrix
+pred <- predict(depot_train, valid.df)
+confusionMatrix(table(pred, valid.df$DEPOT_NUM))
+
+```
+
+
+### Demand Forecasting
+
+```{r}
+library(tidyverse)
+library(caret)
+library(forecast)
+
+
+data <- read_csv("C:/Users/amals/Desktop/dataset19.csv")
+
+data$ORDER_DATE <- as.Date(data$ORDER_DATE, "%m/%d/%y")
+depotData <- filter(data, data$ORDER_QTY > 0)
+depotData <- data.frame(data$ITEM_NUM, data$ORDER_DATE, data$ORDER_QTY)
+names(depotData) <- c("ITEM_NUM", "Date", "ORDER_QTY")
+
+depotData <- depotData %>% group_by(ITEM_NUM, Date) %>% summarize_all(sum) %>% ungroup() %>% spread(key = "ITEM_NUM", value = "ORDER_QTY")
+
+depotData <- subset(depotData, Date <= as.Date("2019-10-30") )
+
+
+depotData[is.na(depotData)] = 0
+depotData <- depotData %>% 
+  mutate(Total = rowSums(depotData[, 2:ncol(depotData)])) %>% 
+  select(Date, Total)
+
+
+# Applying time series on depotData
+timeData <- ts (depotData$Total)
+timeData
+
+plot(timeData, col = 1)
+
+Y <- diff(timeData)
+
+plot(Y)
+
+# Used Snaive to fit the timeSeries data
+fit <- snaive(timeData)
+
+# Using Arima Time Series data
+fit_a <- auto.arima(timeData, d=1, D=1, stepwise = FALSE, approximation = FALSE, trace = TRUE)
+
+# Forecasting for next 30 days
+fct <- forecast(fit_a, h=30)
+plot(fct)
+
+autoplot(fct, include = 200)
+```
+
+### Revenue Forecasting
+
+```{r}
+library(tidyverse)
+library(caret)
+library(forecast)
+
+data <- read_csv("C:/Users/amals/Desktop/dataset19.csv")
+data$ORDER_DATE <- as.Date(data$ORDER_DATE, "%m/%d/%y")
+
+# Calculating Revenue
+data["Revenue"] <- NA
+data$Revenue <- data$ORDER_QTY*data$SELL_PRICE
+
+depotData <- filter(data, data$ORDER_QTY > 0)
+depotData <- data.frame(data$ITEM_NUM, data$ORDER_DATE, data$Revenue)
+names(depotData) <- c("ITEM_NUM", "Date", "Revenue")
+
+depotData <- depotData %>% group_by(ITEM_NUM, Date) %>% summarize_all(sum) %>% ungroup() %>% spread(key = "ITEM_NUM", value = "Revenue")
+
+depotData <- subset(depotData, Date <= as.Date("2019-10-30") )
+
+depotData[is.na(depotData)] = 0
+
+depotData <- depotData %>% 
+  mutate(Total = rowSums(depotData[, 2:ncol(depotData)])) %>% 
+  select(Date, Total)
+
+# apply TimeSeries on 
+timeData <- ts (depotData$Total)
+
+plot(timeData)
+
+Y <- diff(timeData)
+
+plot(Y)
+
+# Used Snaive to fit the timeSeries data
+
+fit <- snaive(timeData)
+
+# Using Arima Time Series data
+
+fit_a <- auto.arima(timeData, d=1, D=1, stepwise = FALSE, approximation = FALSE, trace = TRUE)
+
+# Forecasting for next 30 days
+
+fct <- forecast(fit_a, h=30)
+plot(fct)
+autoplot(fct, include = 200)
+```
+
+### Multi-Variate Linear Regression Anakysis 
+```{r}
+data2k19 <- read_csv("C:/Users/amals/Desktop/dataset19.csv")
+data2k18 <- read_csv("C:/Users/amals/Desktop/dataset18.csv")
+df <- rbind(data2k18, data2k19)
+
+# Converting the fields into factors
+
+df$ORDER_DATE <- as.Date(df$ORDER_DATE, "%m/%d/%y")
+df$ITEM_CATEGORY <- as.factor(df$ITEM_CATEGORY)
+df$SHIP_TO_STATE <- as.factor(df$SHIP_TO_STATE)
+df$SHIP_TO_ZIP <- as.factor(df$SHIP_TO_ZIP)
+df <- df[2:ncol(df)]
+nrow(df)
+names(df)
+
+# Splitting the data into Train abd Validation set
+
+set.seed(0)
+initialSelVar <- c(1, 5, 13)
+trainIndex <- sample(c(1:7593412),5315388)
+trainDF <- df[trainIndex, initialSelVar]
+names(trainDF)
+validDF <- df[-trainIndex, initialSelVar]
+
+# Applying Multi Variant Linear Regression
+
+depotAllocModel <- lm(DEPOT_NUM ~ ITEM_NUM + SHIP_TO_STATE , data = trainDF)
+summary(depotAllocModel)
+
+# Plotting the QQ Plot
+
+par(mfrow = c(2, 2))
+plot(depotAllocModel)
+
+
+# Predicting the accuracy
+
+library(forecast)
+depotAllocPred <- predict(depotAllocModel, validDF)
+accuracy(depotAllocPred, validDF$`DEPOT_NUM`)
+confint(depotAllocModel)
+
+
+# Residuals Plot
+residplot <- function(fit, nbreaks=10) {
+z <- rstudent(fit)
+hist(z, breaks=nbreaks, freq=FALSE,
+xlab="Studentized Residual",
+main="Distribution of Errors")
+rug(jitter(z), col="brown")
+curve(dnorm(x, mean=mean(z), sd=sd(z)),
+add=TRUE, col="blue", lwd=2)
+lines(density(z)$x, density(z)$y,
+col="red", lwd=2, lty=2)
+legend("topright",
+legend = c( "Normal Curve", "Kernel Density Curve"),
+lty=1:2, col=c("blue","red"), cex=.7)
+}
+residplot(depotAllocModel)
+
+```
+
+### K-Mean Clustering
+
+```{r}
+library(tidyverse)  # data manipulation
+library(cluster)    # clustering algorithms
+library(factoextra) # clustering algorithms & visualization
+
+buyer <- na.omit(buyer)
+
+distance <- get_dist(buyer$SHIP_TO_STATE)
+fviz_dist(distance, gradient = list(low = "#00AFBB", mid = "white", high = "#FC4E07"))
+
+buyer$ITEM_NUM <- as.numeric(buyer$ITEM_NUM)
+k2 <- kmeans(buyer$DEPOT_NUM, centers = 5, nstart = 25)
+str(k2)
+k2
+#sapply(k2, mode)
+# 
+# k2$cluster <- as.factor(k2$cluster)
+# ggplot(buyer, aes(k2$cluster,buyer$DEPOT_NUM , color = buyer$Revenue)) + geom_point()
+# 
+# clusplot(buyer, k2$cluster, color=TRUE, shade=TRUE,labels=2, lines=0)
+
+```
+
+
+
+## Data Exploration 
+
+```{r}
+library(tidyverse)
+buyer %>% 
+  group_by(DEPOT_NUM) %>% 
+  summarize(count = n()) %>% 
+  top_n(10, wt = count) %>%
+  arrange(desc(count)) %>% 
+  ggplot(aes(x = reorder(DEPOT_NUM, count), y = count))+
+  geom_bar(stat = "identity", fill = "royalblue", colour = "blue") +
+  labs(x = "", y = "Top 10 Depots") +
+  coord_flip() +
+  theme_grey(base_size = 12)
+```
+
+```{r}
+library(tidyverse)
+buyer %>% 
+  group_by(ITEM_CATEGORY) %>% 
+  summarize(count = n()) %>% 
+  top_n(10, wt = count) %>%
+  arrange(desc(count)) %>% 
+  ggplot(aes(x = reorder(ITEM_CATEGORY, count), y = count))+
+  geom_bar(stat = "identity", fill = "cyan", colour = "blue") +
+  labs(x = "", y = "Top 10 Item Category") +
+  coord_flip() +
+  theme_grey(base_size = 12)
+```
+

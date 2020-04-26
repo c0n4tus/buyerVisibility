@@ -1,0 +1,154 @@
+---
+title: "DataWrangling"
+author: "Doug Laney"
+date: "4/24/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# loading libraries
+library("tidyverse")
+```
+
+```{r}
+# create sales order masters department wise
+saleOrder18D20 <- read_csv("sale-data/Dept20/SalesOrder_D20Hist_2018.csv")
+saleOrder18D20$DEPT_NUM <- 20
+head(saleOrder18D20)
+saleOrder18D23 <- read_csv("sale-data/Dept23/SalesOrder_D23Hist_2018.csv")
+saleOrder18D23$DEPT_NUM <- 23
+head(saleOrder18D23)
+saleOrder18D26 <- read_csv("sale-data/Dept26/SalesOrder_D26Hist_2018.csv")
+saleOrder18D26$DEPT_NUM <- 26
+head(saleOrder18D26)
+saleOrder18D28 <- read_csv("sale-data/Dept28/Costco_ECom_SalesOrder_D28Hist_2018.csv")
+saleOrder18D28$DEPT_NUM <- 28
+names(saleOrder18D28)[10:13] <- c("DAY", "WEEK", "PERIOD", "YEAR")
+head(saleOrder18D28)
+saleOrder18D35 <- read_csv("sale-data/Dept35/SalesOrder_D35Hist_2018.csv")
+saleOrder18D35$DEPT_NUM <- 35
+head(saleOrder18D35)
+```
+
+```{r}
+# sale order master for 2018
+saleOrder18Master <- rbind(saleOrder18D20, saleOrder18D23, saleOrder18D26, saleOrder18D28, saleOrder18D35)
+head(saleOrder18Master)
+```
+
+```{r}
+# selected variables for analysis
+saleOrder18 <- saleOrder18Master[, c(2,4:9,14)]
+head(saleOrder18)
+```
+
+```{r}
+# # generating item list master
+itemMaster <- read_csv("initial-data/ItemMaster_Sample8.csv")
+head(itemMaster)
+```
+
+```{r}
+# selected variables in item list master for analysis
+itemList <- itemMaster[, c(2:8)]
+head(itemList)
+```
+
+```{r}
+# depot information master
+fulfillmentCenter <- read_csv("initial-data/FulfillmentCtr_Mulitple.csv")
+head(fulfillmentCenter)
+```
+
+```{r}
+# depot number based on priority
+ffCenter <- fulfillmentCenter[, c(1:6)]
+ffCenter <- ffCenter %>% filter(COMPANY_NUM == 1)
+ffCenter <- ffCenter[-1]
+ffCenter <- ffCenter %>% 
+  group_by(SHIP_TO_STATE, SHIP_TO_ZIP) %>% 
+  slice(which.min(PRIORITY_TMP))
+ffCenter <- ffCenter %>% 
+  filter(SHIP_TO_STATE != "CA")
+ffCenter <- ffCenter[c(-4,-5)]
+ffCA <- data.frame(725, "Combo", "CA")
+names(ffCA) <- c("DEPOT_NUM", "FULFILLMENT_TYPE", "SHIP_TO_STATE")
+ffCenter <- rbind(ffCenter, ffCA)
+head(ffCenter)
+```
+
+```{r}
+depotGeoLoc = read_csv("initial-data/DepotGeoLocation.csv")
+head(depotGeoLoc)
+```
+
+```{r}
+# depot zip mapping table
+depotZipMapper = depotGeoLoc[,c(1:4)]
+head(depotZipMapper)
+```
+
+```{r}
+# compiled 2018 dataset
+dataset18 = saleOrder18 %>% 
+  inner_join(itemList, by = c("ITEM_NUM", "DEPT_NUM")) %>% 
+  inner_join(ffCenter, by = "SHIP_TO_STATE")  %>%
+  inner_join(depotZipMapper, by = "DEPOT_NUM")
+head(dataset18)
+```
+
+```{r}
+# generating csv
+write_csv(dataset18, "dataset18.csv")
+```
+
+```{r}
+# department wise sales order data for 2019
+saleOrder19D20 <- read_csv("sale-data/Dept20/SalesOrder_D20Hist_2019..csv")
+saleOrder19D20$DEPT_NUM <- 20
+names(saleOrder19D20)[12] <- "PERIOD"
+head(saleOrder19D20)
+saleOrder19D23 <- read_csv("sale-data/Dept23/SalesOrder_D23Hist_2019.csv")
+saleOrder19D23$DEPT_NUM <- 23
+head(saleOrder19D23)
+saleOrder19D26 <- read_csv("sale-data/Dept26/Costco_ECom_SalesOrder_D26Hist_2019.csv")
+saleOrder19D26$DEPT_NUM <- 26
+head(saleOrder19D26)
+saleOrder19D28 <- read_csv("sale-data/Dept28/Costco_ECom_SalesOrder_D28Hist_2019.csv")
+saleOrder19D28$DEPT_NUM <- 28
+names(saleOrder19D28)[10:13] <- c("DAY", "WEEK", "PERIOD", "YEAR")
+head(saleOrder19D28)
+saleOrder19D35 <- read_csv("sale-data/Dept35/SalesOrder_D35Hist_2019.csv")
+saleOrder19D35$DEPT_NUM <- 35
+head(saleOrder19D35)
+```
+
+```{r}
+# sales order master for 2019
+saleOrder19Master <- rbind(saleOrder19D20, saleOrder19D23, saleOrder19D26, saleOrder19D28, saleOrder19D35)
+head(saleOrder19Master)
+```
+
+```{r}
+# selected variables from master
+saleOrder19 <- saleOrder19Master[, c(2,4:9,14)]
+head(saleOrder19)
+```
+
+```{r}
+# compiled 2019 dataset
+dataset19 = saleOrder19 %>% 
+  inner_join(itemList, by = c("ITEM_NUM", "DEPT_NUM")) %>% 
+  inner_join(ffCenter, by = "SHIP_TO_STATE")  %>%
+  inner_join(depotZipMapper, by = "DEPOT_NUM")
+head(dataset19)
+```
+
+```{r}
+# generating csv
+write_csv(dataset19, "dataset19.csv")
+```
